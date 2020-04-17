@@ -1,11 +1,3 @@
-/*
- * Connect
- *      Arduino       I2C_LCD
- *        5V            VCC
- *        GND           GND
- *        A4            SDA
- *        A5            SCL
- */
 #include <avr/interrupt.h>
 #include <Wire.h> 
 #include "LiquidCrystal_I2C.h"
@@ -39,61 +31,32 @@ LiquidCrystal_I2C lcd(0x27,16,2);
 
 unsigned char   g_Led = OF, g_time_led = 0;
 unsigned char   g_start = OF, g_run_motor = OF;
-unsigned long   g_Vt,    g_Ti, g_ti,   g_Te, g_te,   g_F;
-unsigned long   g_Vt_p;
+long            g_Vt,    g_Ti, g_ti,   g_Te, g_te,   g_F;
+long            g_Vt_p;
 #define   MODE      4
 #define   CMV       0
 #define   CPAP      1
 #define   VAC       2
 #define   TEST      3
 unsigned char   mode = 0;
-unsigned long   g_active_VAC = 0, g_active_VAC_bk;
+long            g_active_VAC = 0, g_active_VAC_bk;
 
 unsigned char g_but_green_1 = OF, g_but_green_2 = OF;
 unsigned char g_but_red_1 = OF,   g_but_red_2 = OF;
 
 
 #define NUM   5
-long g_arr[NUM], g_threshold_P_H2O;
+long          g_arr[NUM], g_threshold_P_H2O;
 Adafruit_BMP085 bmp;
 /////////////////////////////////////////////////////////////////////////////////////////
 // Function /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
-void delay_u_s(unsigned long us)
+void delay_us(long us)
 {
     us = (us*4)/5;
     while(us--) {
       delayMicroseconds(2);
     }
-}
-////////////////////////////////////////////////////
-void go_home(void)
-{
-  unsigned char sum_sensor, i_h = 7;
-
-    while(i_h--){
-        if(digitalRead(IN) == ON) {sum_sensor++;}
-        else                      {sum_sensor = 0;}
-        delay(1);
-    }    
-    if(sum_sensor >= 5){
-        digitalWrite(EN, EN_OF);
-        return;
-    }
-    digitalWrite(DIR, DIR_OF); 
-    digitalWrite(EN, EN_ON);
-    while(1){
-        if(digitalRead(IN) == ON) {sum_sensor++;}
-        else                      {sum_sensor = 0;}
-        if(sum_sensor >= 5){
-            //digitalWrite(EN, EN_OF);
-            break;
-        }
-        delay_u_s(400);
-        digitalWrite(PWM, ON);
-        delay_u_s(400);
-        digitalWrite(PWM, OF);
-    }    
 }
 ////////////////////////////////////////////////////
 long read_update_P_sensor(unsigned char j)
@@ -110,8 +73,8 @@ long read_update_P_sensor(unsigned char j)
         P = P/5;
         P_H2O = P/98;       //98 H2O
         Serial.print("Pressure = ");
-        Serial.print(P);      Serial.print(" Pa     ");
-        Serial.print(P_H2O);  Serial.println(" mm H2O");
+        //Serial.print(P);      Serial.print(" Pa     ");
+        Serial.print(P_H2O - g_threshold_P_H2O);  Serial.println(" cm H2O");
     }    
     return P_H2O;
 }
@@ -149,65 +112,101 @@ void display_lcd(unsigned short a, unsigned short b, unsigned short c)
     else {              lcd.setCursor(9,1);  /*lcd.write(tr+0x30);*/ lcd.write(ch+0x30); lcd.write(dv+0x30);}  
 }
 ////////////////////////////////////////////////////
-unsigned long calculate_pulse(unsigned long Vt)
+long calculate_pulse(long Vt)
 {
     float Vt_p = Vt/800.0;
     Vt_p = sqrt(Vt_p)*450;
     
-    return (unsigned long)(Vt_p) + 150;  //offset 150*2 pulse
+    return (long)(Vt_p) + 140;  //offset 150*2 pulse
 }
 ////////////////////////////////////////////////////
-void run_CMV(unsigned long Vt_p, unsigned long ti, unsigned long te)
-{  
-        g_run_motor = ON;
-        digitalWrite(EN, EN_ON);
-    //ON
-        unsigned long pulse =Vt_p, pulse_200 = Vt_p/3, pulse_400 = (Vt_p*2)/3, t_pulse, t1 = ti/2, t2 = (ti*3)/2;
-        digitalWrite(DIR, DIR_ON); 
-        digitalWrite(L_GREEN, L_ON);
-        while(pulse--){
-            if      (pulse < pulse_200)   t_pulse = t2;   //<200  slow
-            else if (pulse < pulse_400)   t_pulse = ti;   //<400  medium
-            else                          t_pulse = t1;   //<600  fast
-            delay_u_s(t_pulse); 
-            digitalWrite(PWM, ON);
-            delay_u_s(t_pulse); 
-            digitalWrite(PWM, OF);
+void go_home(void)
+{
+  unsigned char sum_sensor, i_h = 10;
+
+    //check Switch
+    while(i_h--){
+        if(digitalRead(IN) == ON) {sum_sensor++;}
+        else                      {sum_sensor = 0;}
+        delay_us(10);
+    }    
+    if(sum_sensor >= 5){
+        //digitalWrite(EN, EN_OF);
+        return;
+    }
+    //go home & check Switch
+    long t_st = 1000;
+    digitalWrite(DIR, DIR_OF); 
+    digitalWrite(EN, EN_ON);
+    while(1){
+        if(digitalRead(IN) == ON) {sum_sensor++;}
+        else                      {sum_sensor = 0;}
+        if(sum_sensor >= 5){
+            //digitalWrite(EN, EN_OF);
+            break;
         }
-        digitalWrite(L_GREEN, L_OF);
-        
+        delay_us(380 + t_st);   //400
+        digitalWrite(PWM, ON);
+        delay_us(380 + t_st);   //400
+        digitalWrite(PWM, OF);
+
+        if(t_st > 0) t_st -= 10;
+    }    
+}
+////////////////////////////////////////////////////
+void go_compress (long Vt_p, long ti)
+{
+      long pulse = Vt_p, t_st = 500;
+      long t_pulse = ti/2, t_p = ti/pulse;
+      
+      digitalWrite(DIR, DIR_ON); 
+      digitalWrite(L_GREEN, L_ON);
+      while(pulse--){
+          delay_us((t_pulse/2) + t_st); 
+          digitalWrite(PWM, ON);
+          delay_us((t_pulse/2) + t_st); 
+          digitalWrite(PWM, OF);
+
+          if(t_st > 0) t_st -= 50;
+          t_pulse += t_p;
+      }
+      delay(10);
+      digitalWrite(L_GREEN, L_OF);  
+}
+////////////////////////////////////////////////////
+////////////////////////////////////////////////////
+void run_CMV(long Vt_p, long ti, long te)
+{  
+      g_run_motor = ON;
+      
+    //ON
+      digitalWrite(EN, EN_ON);
+      go_compress(Vt_p, ti);
+      
     //OFF
-        digitalWrite(DIR, DIR_OF);
-        unsigned char sum_sensor = 0;
-        while(1){
-            if(digitalRead(IN) == ON) {sum_sensor++;}
-            else                      {sum_sensor = 0;}
-            if(sum_sensor >= 5){
-                Serial.print("a\n");
-                if(g_start == OF) {digitalWrite(EN, EN_OF);  Serial.print("b\n");} //???
-                break;
-            }
-            delay_u_s(te);
-            digitalWrite(PWM, ON);
-            delay_u_s(te);
-            digitalWrite(PWM, OF);
-        }   
-        g_run_motor = OF; 
+      go_home();
+      delay(te);
+      Serial.print("a\n");
+      if(g_start == OF) {digitalWrite(EN, EN_OF);  Serial.print("b\n");} //???  
+      
+      g_run_motor = OF;
+        
 }
 ////////////////////////////////////////////////////
 void run_CPAP(void)
 {
         g_run_motor = ON;
-        digitalWrite(EN, EN_ON);
+        
     //ON
-        unsigned long pulse = 600, t_pulse = 700;
+        digitalWrite(EN, EN_ON);
+        long pulse = 600, t_pulse = 700;
         digitalWrite(DIR, DIR_ON);
         digitalWrite(L_GREEN, L_ON);
         while(pulse--){
             t_pulse = t_pulse + 12;
-            delay_u_s(t_pulse); 
+            delay_us(t_pulse); 
             digitalWrite(PWM, ON);
-            delay_u_s(t_pulse); 
+            delay_us(t_pulse); 
             digitalWrite(PWM, OF);
         }
         digitalWrite(L_GREEN, L_OF);
@@ -216,71 +215,50 @@ void run_CPAP(void)
         go_home();
         Serial.print("a\n");
         if(g_start == OF) {digitalWrite(EN, EN_OF);  Serial.print("b\n");} //???
+        
         g_run_motor = OF;
 }
 ////////////////////////////////////////////////////
-void run_VAC(unsigned long Vt_p, unsigned long ti)
+void run_VAC(long Vt_p, long ti)
 {
-  long Pressure_H2O = read_update_P_sensor(1) - g_threshold_P_H2O;    
-  
-    if( (Pressure_H2O > 0) && (g_active_VAC > 0) ) return;
+    long Pressure_H2O = read_update_P_sensor(1) - g_threshold_P_H2O;    
+    if( (Pressure_H2O > 2) && (g_active_VAC > 0) ) return;
     g_active_VAC = g_active_VAC_bk;
 
         g_run_motor = ON;
+        
+      //ON
         digitalWrite(EN, EN_ON);
-    //ON
-        unsigned long pulse =Vt_p, pulse_200 = Vt_p/3, pulse_400 = (Vt_p*2)/3, t_pulse, t1 = ti/2, t2 = (ti*3)/2;
-        digitalWrite(DIR, DIR_ON); 
-        digitalWrite(L_GREEN, L_ON);
-        while(pulse--){
-            if      (pulse < pulse_200)   t_pulse = t2;   //<200  slow
-            else if (pulse < pulse_400)   t_pulse = ti;   //<400  medium
-            else                          t_pulse = t1;   //<600  fast
-            delay_u_s(t_pulse); 
-            digitalWrite(PWM, ON);
-            delay_u_s(t_pulse); 
-            digitalWrite(PWM, OF);
-        }
-        digitalWrite(L_GREEN, L_OF);
+        go_compress(Vt_p, ti);
 
-    read_update_P_sensor(NUM);
+        read_update_P_sensor(NUM);
 
-    //OFF
+      //OFF
         go_home();     
         Serial.print("a\n");
         if(g_start == OF) {digitalWrite(EN, EN_OF);  Serial.print("b\n");} //???   
+        
         g_run_motor = OF;
 }
 ////////////////////////////////////////////////////
-void run_TEST(unsigned long Vt_p, unsigned long ti)
+void run_TEST(long Vt_p, long ti)
 {
-  long Pressure_H2O = read_update_P_sensor(1) - g_threshold_P_H2O;    
-  
-    if(Pressure_H2O > 0) return;
+    long Pressure_H2O = read_update_P_sensor(1) - g_threshold_P_H2O;    
+    if(Pressure_H2O > 2) return;
 
         g_run_motor = ON;
+        
+      //ON
         digitalWrite(EN, EN_ON);
-    //ON
-        unsigned long pulse =Vt_p, pulse_200 = Vt_p/3, pulse_400 = (Vt_p*2)/3, t_pulse, t1 = ti/2, t2 = (ti*3)/2;
-        digitalWrite(DIR, DIR_ON); 
-        digitalWrite(L_GREEN, L_ON);
-        while(pulse--){
-            if      (pulse < pulse_200)   t_pulse = t2;   //<200  slow
-            else if (pulse < pulse_400)   t_pulse = ti;   //<400  medium
-            else                          t_pulse = t1;   //<600  fast
-            delay_u_s(t_pulse); 
-            digitalWrite(PWM, ON);
-            delay_u_s(t_pulse); 
-            digitalWrite(PWM, OF);
-        }
-        digitalWrite(L_GREEN, L_OF);
+        go_compress(Vt_p, ti);
 
-    read_update_P_sensor(NUM);
+        read_update_P_sensor(NUM);
 
-    //OFF
+      //OFF
         go_home();     
         //Serial.print("a\n");
         if(g_start == OF) {digitalWrite(EN, EN_OF);  Serial.print("b\n");} //???   
+        
         g_run_motor = OF;     
 }
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -356,7 +334,7 @@ void setup()
     memset(g_arr, 0, NUM);
     g_threshold_P_H2O = read_update_P_sensor(NUM);
     Serial.print("Threshold Pressure H2O = ");
-    Serial.print(g_threshold_P_H2O);      Serial.println(" H2O");
+    Serial.print(g_threshold_P_H2O);      Serial.println(" cm H2O");
 
     /* Reset Timer/Counter1 */
     TCCR1A = 0; TCCR1B = 0; TIMSK1 = 0;
@@ -369,36 +347,34 @@ void setup()
 /////////////////////////////////////////////////////////////////////////
 void loop()
 {
-    //////////Read volume & display LCD for Vt, ti, F
+    //////////Read volume Vt, ti, F
     g_Vt = analogRead(0);     //200 -> 800
         g_Vt = (g_Vt*6)/10    + 200;         
         if(g_Vt > 800)  g_Vt  = 800; 
     g_Ti = analogRead(1);     //500 -> 2000
         g_Ti = (g_Ti*3)/2     + 500;     
-        if(g_Ti > 2000)  g_Ti = 2000;
+        if(g_Ti > 2000) g_Ti = 2000;
+        if(g_Ti < g_Vt) g_Ti = g_Vt;
     g_F = analogRead(2);      //10 -> 40
         g_F = g_F/34          + 10; 
         if(g_F > 40)     g_F  = 40;
-
-        if((g_Ti >= 1000) && (g_F > 35) ) g_F  = 35;
-        if((g_Ti >= 1200) && (g_F > 30) ) g_F  = 30;
-        if((g_Ti >= 1400) && (g_F > 25) ) g_F  = 25;
-        if((g_Ti >= 1600) && (g_F > 22) ) g_F  = 22;
-        if((g_Ti >= 1800) && (g_F > 20) ) g_F  = 20;
-    display_lcd(g_Vt, g_Ti, g_F);
     
-    //////////Calculate pulse & timer for Vt_p, ti, te
+    //////////Calculate pulse & timer for Vt_p, ti, g_F, te, g_active_VAC
         g_Vt_p = calculate_pulse(g_Vt);
-        //Serial.print("\n"); Serial.print(g_Vt_p);
         
-        g_ti = (g_Ti*1000)/g_Vt_p;
-        g_ti = g_ti/2;                            //2T
+        g_ti = (g_Ti*1000)/g_Vt_p;          //us
 
-        g_te = 60000000/g_F;
-        g_te = g_te - g_ti*2*g_Vt_p;
-        g_te = (g_te/g_Vt_p)/2;                   //2T
+        while(1) {
+            g_Te = (60000000/g_F) - (g_Ti*1000);
+            g_te = g_Te - 800*g_Vt_p;       //us
+            g_te = g_te/1000;               //ms
+            if(g_te >= 0) {break;}
+            else {g_F--;}
+        }
 
         g_active_VAC_bk = 6000/g_F;
+
+        display_lcd(g_Vt, g_Ti, g_F);
         
     //////////Control Step motor
     if(g_start == ON) {
