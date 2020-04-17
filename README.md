@@ -13,7 +13,7 @@ Vietnam and the world are in the most intense battle again COVID-19. This Ventil
 A Ventilator is a medical device that plays an important role in emergency and health assistance. Therefore, we also hope that not only in the COVID-19 but also in life, our project can bring many practical contributions to the community and society.
 
 ## Technical specification
-
+Use for Arduino Uno R3 board
 
 ## Getting started
 
