@@ -17,20 +17,27 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 #define   DIR_OF        HIGH
 #define   B_ON          LOW
 #define   B_OF          HIGH
-
 #define   PWM       2
 #define   DIR       3
 #define   EN        4
-
 #define   BUZ       7
 #define   B_RED     8
 #define   L_RED     9
 #define   B_GREEN   10
 #define   L_GREEN   11
 #define   IN        12
+unsigned char       g_but_green_1 = OF, g_but_green_2 = OF;
+unsigned char       g_but_red_1 = OF,   g_but_red_2 = OF;
+unsigned char       g_Led = OF, g_Time_led = 0;
+unsigned char       g_start = OF;
 
-unsigned char   g_Led = OF, g_Time_led = 0;
-unsigned char   g_start = OF;
+#define   MODE      4
+#define   A_VC      0
+#define   SIMV      1
+#define   PRVC      2
+#define   SET       3
+#define   TRIGGER   3
+long                g_active_trigger = 0, g_active_trigger_bk;
 struct my_data_set
 {
   long g_Vt;
@@ -42,25 +49,12 @@ struct my_data_set
   long g_Peep;
   long g_Pip;
   long g_Sup;
+  long g_Mode;
 };
 struct my_data_set   st_data_set;
 
-#define   MODE      4
-#define   A_VC      0
-#define   SIMV      1
-#define   PRVC      2
-#define   SET       3
-unsigned char       g_Mode = 0;
-#define   TRIGGER   3
-long                g_active_trigger = 0, g_active_trigger_bk;
-
-unsigned char       g_but_green_1 = OF, g_but_green_2 = OF;
-unsigned char       g_but_red_1 = OF,   g_but_red_2 = OF;
-
-
 #define   NUM       5
 long                g_arr[NUM], g_threshold_P_H2O;
-
 
 #define   HMI_UART  Serial
 unsigned char       g_HMI_config = OF;
@@ -105,10 +99,10 @@ void display_lcd(unsigned short a, unsigned short b, unsigned short c, unsigned 
     lcd.setCursor(0,0);   lcd.print("Vt   Ti    F    Mode");
     lcd.setCursor(0,2);   lcd.print("Peep Pip   Sup");
     
-    if      (g_Mode == A_VC) {lcd.setCursor(16,1); lcd.print("AC/ "); lcd.setCursor(16,2); lcd.print("  VC");}
-    else if (g_Mode == SIMV) {lcd.setCursor(16,1); lcd.print("SIMV"); lcd.setCursor(16,2); lcd.print(" +PS");}
-    else if (g_Mode == PRVC) {lcd.setCursor(16,1); lcd.print("PRVC"); lcd.setCursor(16,2); lcd.print("    ");}
-    else if (g_Mode == SET)  {lcd.setCursor(16,1); lcd.print("SET "); lcd.setCursor(16,2); lcd.print("    ");}
+    if      (st_data_set.g_Mode == A_VC) {lcd.setCursor(16,1); lcd.print("AC/ "); lcd.setCursor(16,2); lcd.print("  VC");}
+    else if (st_data_set.g_Mode == SIMV) {lcd.setCursor(16,1); lcd.print("SIMV"); lcd.setCursor(16,2); lcd.print(" +PS");}
+    else if (st_data_set.g_Mode == PRVC) {lcd.setCursor(16,1); lcd.print("PRVC"); lcd.setCursor(16,2); lcd.print("    ");}
+    else if (st_data_set.g_Mode == SET)  {lcd.setCursor(16,1); lcd.print("SET "); lcd.setCursor(16,2); lcd.print("    ");}
 
     ng = a/1000; 
     temp = a%1000;
@@ -295,8 +289,8 @@ ISR (TIMER1_OVF_vect)
         g_but_red_1 = g_but_red_2;
         g_but_red_2 = digitalRead(B_RED);
         if((g_but_red_1 == ON) && (g_but_red_2 == OF) ) {
-            g_Mode++;
-            if(g_Mode == MODE) g_Mode = 0;
+            st_data_set.g_Mode++;
+            if(st_data_set.g_Mode == MODE) st_data_set.g_Mode = 0;
         }
     }
     
@@ -318,7 +312,7 @@ ISR (TIMER1_OVF_vect)
 // HMI UART /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
-void rs485_sent_data(unsigned char *str, unsigned char len)
+void uart_sent_data(unsigned char *str, unsigned char len)
 { 
   unsigned char i_s, j_s = 0;
   unsigned short crc;
@@ -354,17 +348,17 @@ void process_cmd(unsigned char ck_sum)
         g_start = ON;
         
         HMI_Protocol.st_uart.uart_data[0] = 1;
-        rs485_sent_data(HMI_Protocol.st_uart.uart_data, 1);
+        uart_sent_data(HMI_Protocol.st_uart.uart_data, 1);
     }
     else if(HMI_Protocol.st_uart.function == S_STOP) {
         g_start = OF; 
         digitalWrite(L_RED, L_OF);
         
         HMI_Protocol.st_uart.uart_data[0] = 1;
-        rs485_sent_data(HMI_Protocol.st_uart.uart_data, 1);
+        uart_sent_data(HMI_Protocol.st_uart.uart_data, 1);
     }
     else if(HMI_Protocol.st_uart.function == S_READ) {
-        HMI_Protocol.st_uart.uart_data[0] = g_Mode;
+        HMI_Protocol.st_uart.uart_data[0] = st_data_set.g_Mode;
         HMI_Protocol.st_uart.uart_data[1] = st_data_set.g_Vt>>8;
         HMI_Protocol.st_uart.uart_data[2] = st_data_set.g_Vt;
         HMI_Protocol.st_uart.uart_data[3] = st_data_set.g_Ti>>8;
@@ -373,10 +367,10 @@ void process_cmd(unsigned char ck_sum)
         HMI_Protocol.st_uart.uart_data[6] = st_data_set.g_Peep;
         HMI_Protocol.st_uart.uart_data[7] = st_data_set.g_Pip;
         HMI_Protocol.st_uart.uart_data[8] = st_data_set.g_Sup;
-        rs485_sent_data(HMI_Protocol.st_uart.uart_data, 9);
+        uart_sent_data(HMI_Protocol.st_uart.uart_data, 9);
     }
     else if(HMI_Protocol.st_uart.function == S_WRITE) {
-        g_Mode  = HMI_Protocol.st_uart.uart_data[0];
+        st_data_set.g_Mode  = HMI_Protocol.st_uart.uart_data[0];
         st_data_set.g_Vt    = HMI_Protocol.st_uart.uart_data[1]*256 + HMI_Protocol.st_uart.uart_data[2];
         st_data_set.g_Ti    = HMI_Protocol.st_uart.uart_data[3]*256 + HMI_Protocol.st_uart.uart_data[4];
         st_data_set.g_F     = HMI_Protocol.st_uart.uart_data[5];
@@ -391,7 +385,7 @@ void process_cmd(unsigned char ck_sum)
             else {st_data_set.g_F--;}
         }
         HMI_Protocol.st_uart.uart_data[5] = st_data_set.g_F;
-        rs485_sent_data(HMI_Protocol.st_uart.uart_data, 9);
+        uart_sent_data(HMI_Protocol.st_uart.uart_data, 9);
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -400,24 +394,23 @@ void process_cmd(unsigned char ck_sum)
 void setup()
 {
     lcd.init();                      // initialize the lcd 
-    pinMode(DIR, OUTPUT);
-    pinMode(PWM, OUTPUT);
-    pinMode(EN, OUTPUT);
-    pinMode(L_GREEN, OUTPUT);
-    pinMode(B_GREEN, INPUT_PULLUP);
-    pinMode(L_RED, OUTPUT);
-    pinMode(B_RED, INPUT_PULLUP);
-    pinMode(IN, INPUT_PULLUP);
-    pinMode(BUZ, OUTPUT);
-
-    digitalWrite(BUZ, B_OF);
+    pinMode(DIR,      OUTPUT);
+    pinMode(PWM,      OUTPUT);
+    pinMode(EN,       OUTPUT);
+    pinMode(L_GREEN,  OUTPUT);
+    pinMode(B_GREEN,  INPUT_PULLUP);
+    pinMode(L_RED,    OUTPUT);
+    pinMode(B_RED,    INPUT_PULLUP);
+    pinMode(IN,       INPUT_PULLUP);
+    pinMode(BUZ,      OUTPUT);
+    digitalWrite(BUZ,     B_OF);
     digitalWrite(L_GREEN, L_OF);
-    digitalWrite(L_RED, L_OF);
-    digitalWrite(EN, EN_OF);
-
+    digitalWrite(L_RED,   L_OF);
+    digitalWrite(EN,      EN_OF);
     st_data_set.g_Peep = 5; 
-    st_data_set.g_Pip = 20; 
-    st_data_set.g_Sup = 5;
+    st_data_set.g_Pip  = 20; 
+    st_data_set.g_Sup  = 5;
+    st_data_set.g_Mode = 0;
 
     Serial.begin(115200);
     Serial.println("Go Home");
@@ -425,7 +418,6 @@ void setup()
     
     // Print a message to the LCD.
     lcd.backlight();
-    //display_lcd(0, 0, 0, 0, 0, 0);
 
     //init BMP180
     if (!bmp.begin()) {
@@ -434,14 +426,13 @@ void setup()
     }
     memset(g_arr, 0, NUM);
     g_threshold_P_H2O = read_update_P_sensor(NUM);
-    Serial.print("Threshold Pressure H2O = ");
-    Serial.print(g_threshold_P_H2O);      Serial.println(" cm H2O");
+    Serial.print("Threshold Pressure H2O = "); Serial.print(g_threshold_P_H2O); Serial.println(" cm H2O");
 
     /* Reset Timer/Counter1 */
     TCCR1A = 0; TCCR1B = 0; TIMSK1 = 0;
     /* Setup Timer/Counter1 */
     TCCR1B |= (1 << CS11);    // prescale = 8
-    TCNT1 = 45535;            //10ms
+    TCNT1 = 45535;            // 10ms
     TIMSK1 = (1 << TOIE1);    // Overflow interrupt enable 
     sei();                    // cho phép ngắt toàn cục
 }
@@ -467,7 +458,7 @@ void loop()
     }
     
     //////////Read volume Vt, ti, F
-    if( (g_Mode != SET) && (g_HMI_config == OF) ) {
+    if( (st_data_set.g_Mode != SET) && (g_HMI_config == OF) ) {
         st_data_set.g_Vt = analogRead(0);                 //200 -> 800
             st_data_set.g_Vt = (st_data_set.g_Vt*6)/100   + 20;         
             if(st_data_set.g_Vt > 80)  st_data_set.g_Vt   = 80; 
@@ -498,11 +489,11 @@ void loop()
         
     //////////Control Step motor
     if(g_start == ON) {
-        if      (g_Mode == A_VC) run_A_VC(st_data_set.g_Vt, st_data_set.g_Ti);
-        else if (g_Mode == SIMV) run_SIMV(st_data_set.g_Vt, st_data_set.g_Ti);
-        else if (g_Mode == PRVC) run_PRVC(st_data_set.g_Vt, st_data_set.g_Ti);
+        if      (st_data_set.g_Mode == A_VC) run_A_VC(st_data_set.g_Vt, st_data_set.g_Ti);
+        else if (st_data_set.g_Mode == SIMV) run_SIMV(st_data_set.g_Vt, st_data_set.g_Ti);
+        else if (st_data_set.g_Mode == PRVC) run_PRVC(st_data_set.g_Vt, st_data_set.g_Ti);
     }
     else { digitalWrite(EN, EN_OF); }
-    if(g_Mode == SET)  setting();
+    if(st_data_set.g_Mode == SET)  setting();
    
 }
