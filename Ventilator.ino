@@ -1,66 +1,46 @@
 #include <avr/interrupt.h>
 #include <Wire.h> 
 #include "LiquidCrystal_I2C.h"
-#include "Adafruit_BMP085.h"
 #include <math.h> 
 #include "Protocol.h"
-LiquidCrystal_I2C lcd(0x27,20,4);
 
-// Button Pin
-#define   ON            0  
-#define   OF            1
-#define   L_ON          LOW 
-#define   L_OF          HIGH 
-#define   EN_ON         HIGH  
-#define   EN_OF         LOW
-#define   DIR_ON        LOW  
-#define   DIR_OF        HIGH
-#define   B_ON          LOW
-#define   B_OF          HIGH
-#define   PWM       2
-#define   DIR       3
-#define   EN        4
-#define   BUZ       7
-#define   B_RED     8
-#define   L_RED     9
-#define   B_GREEN   10
-#define   L_GREEN   11
-#define   IN        12
+#include "ovconfig.h"
+#include "ovdisplay.h"
+#include "ovalarm.h"
+#include "ovflowmeter.h"
+#include "ovlogger.h"
+#include "ovpressure.h"
+#include "ovwaveform.h"
+#include "ovbvmcontrol.h"
+
+
+// init display
+LiquidCrystal_I2C lcd(0x27,20,4);
+OVDisplay display(lcd);
+
 unsigned char       g_but_green_1 = OF, g_but_green_2 = OF;
 unsigned char       g_but_red_1 = OF,   g_but_red_2 = OF;
 unsigned char       g_Led = OF, g_Time_led = 0;
 unsigned char       g_start = OF;
 
-#define   MODE      4
-#define   A_VC      0
-#define   SIMV      1
-#define   PRVC      2
-#define   SET       3
-#define   TRIGGER   3
 long                g_active_trigger = 0, g_active_trigger_bk;
-struct my_data_set
-{
-  long g_Vt;
-  long g_Ti;
-  long g_Te;
-  long g_F;
-  long g_P;
-  long g_IE;
-  long g_Peep;
-  long g_Pip;
-  long g_Sup;
-  long g_Mode;
-};
 struct my_data_set   st_data_set;
 
-#define   NUM       5
-long                g_arr[NUM], g_threshold_P_H2O;
+// #define   NUM       5
+// long                g_arr[NUM], 
+long  g_threshold_P_H2O;
 
 #define   HMI_UART  Serial
 unsigned char       g_HMI_config = OF;
 
 HMI_protocol HMI_Protocol;
-Adafruit_BMP085 bmp;
+
+// pressure sensor
+OVPressure pressureSensor;
+
+// BVM control
+OVBVMControl control;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Function /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -71,146 +51,27 @@ void delay_us(long us)
       delayMicroseconds(2);
     }
 }
+
 ////////////////////////////////////////////////////
 long read_update_P_sensor(unsigned char j)
 {
-  long P, P_H2O;
-    while(j--){
-        P = 0;
-        for(int i=0; i<(NUM-1); i++){
-            g_arr[i] = g_arr[i+1];
-            P = P + g_arr[i];
-        }
-        g_arr[NUM-1] = bmp.readPressure();
-        P = P + g_arr[NUM-1];
-        P = P/5;
-        P_H2O = P/98;       //98 H2O
-        //Serial.print("Pressure = ");
-        //Serial.print(P);      Serial.print(" Pa     ");
-        //Serial.print(P_H2O - g_threshold_P_H2O);  Serial.println(" cm H2O");
-    }    
-    return P_H2O;
+  return (long) pressureSensor.getPressure(j);
 }
 ////////////////////////////////////////////////////
-void display_lcd(unsigned short a, unsigned short b, unsigned short c, unsigned short d, unsigned short e, unsigned short f)
-{
-  unsigned short ng, tr, ch, dv, temp;
-    
-    lcd.setCursor(0,0);   lcd.print("Vt   Ti    F    Mode");
-    lcd.setCursor(0,2);   lcd.print("Peep Pip   Sup");
-    
-    if      (st_data_set.g_Mode == A_VC) {lcd.setCursor(16,1); lcd.print("AC/ "); lcd.setCursor(16,2); lcd.print("  VC");}
-    else if (st_data_set.g_Mode == SIMV) {lcd.setCursor(16,1); lcd.print("SIMV"); lcd.setCursor(16,2); lcd.print(" +PS");}
-    else if (st_data_set.g_Mode == PRVC) {lcd.setCursor(16,1); lcd.print("PRVC"); lcd.setCursor(16,2); lcd.print("    ");}
-    else if (st_data_set.g_Mode == SET)  {lcd.setCursor(16,1); lcd.print("SET "); lcd.setCursor(16,2); lcd.print("    ");}
-
-    ng = a/1000; 
-    temp = a%1000;
-    tr = temp/100;                       
-    temp = a%100; ch = temp/10;       
-    dv = a%10;
-    lcd.setCursor(0,1);   lcd.write(tr+0x30); lcd.write(ch+0x30); lcd.write(dv+0x30);
-    ng = b/1000; 
-    temp = b%1000;
-    tr = temp/100;                       
-    temp = b%100; ch = temp/10;       
-    //dv = b%10;
-    lcd.setCursor(5,1);   lcd.write(ng+0x30); lcd.write('.');     lcd.write(tr+0x30);   lcd.write(ch+0x30);
-    tr = c/100;                       
-    temp = c%100; ch = temp/10;       
-    dv = c%10;
-    lcd.setCursor(11,1);  lcd.write(ch+0x30); lcd.write(dv+0x30);
-
-    ch = d/10;       
-    dv = d%10;
-    lcd.setCursor(0,3);   lcd.write(ch+0x30); lcd.write(dv+0x30);
-    ch = e/10;       
-    dv = e%10;
-    lcd.setCursor(5,3);   lcd.write(ch+0x30); lcd.write(dv+0x30);
-    f *= 10;
-    tr = f/100;                       
-    ch = f%100; ch = ch/10;       
-    dv = f%10;
-    lcd.setCursor(11,3);  lcd.write(tr+0x30); lcd.write(ch+0x30); lcd.write(dv+0x30); lcd.print("%");
-
-}
 ////////////////////////////////////////////////////
 long calculate_pulse(long Vt)
 {
-    float Vt_p = Vt/800.0;
-    Vt_p = sqrt(Vt_p)*450;
-                                //Max 600 pulse
-    return (long)(Vt_p) + 70;  //offset 150*2 pulse
+    return (long) control.calculatePulse(Vt);  //offset 150*2 pulse
 }
 ////////////////////////////////////////////////////
 void go_home(void)
 {
-  unsigned char sum_sensor, i_h = 10;
-
-    //check Switch
-    while(i_h--){
-        if(digitalRead(IN) == ON) {sum_sensor++;}
-        else                      {sum_sensor = 0;}
-        delay_us(10);
-    }    
-    if(sum_sensor >= 5){
-        //digitalWrite(EN, EN_OF);
-        return;
-    }
-    //go home & check Switch
-    long t_st = 1000;
-    digitalWrite(DIR, DIR_OF); 
-    digitalWrite(EN, EN_ON);
-    while(1){
-        if(digitalRead(IN) == ON) {sum_sensor++;}
-        else                      {sum_sensor = 0;}
-        if(sum_sensor >= 5){
-            //digitalWrite(EN, EN_OF);
-            break;
-        }
-        delay_us(380 + t_st);   //380 min
-        digitalWrite(PWM, ON);
-        delay_us(380 + t_st);   //380 min
-        digitalWrite(PWM, OF);
-
-        if(t_st > 0) t_st -= 10;
-    }    
+    control.Home();
 }
 ////////////////////////////////////////////////////
 void go_compress (long Vt, long Ti)
 {
-  if(Vt == 0) return;
-      long pulse  = calculate_pulse(Vt);
-      long t_pulse = 380; //380 min
-      //long t_pulse = (Vt*1000)/pulse, t_p = t_pulse/pulse;
-      //t_pulse = t_pulse/4;
-      long t_st = 500;
-      
-      digitalWrite(DIR, DIR_ON); 
-      digitalWrite(EN, EN_ON);
-      digitalWrite(L_GREEN, L_ON);
-      while(pulse--){
-          delay_us(t_pulse + t_st); 
-          digitalWrite(PWM, ON);
-          delay_us(t_pulse + t_st); 
-          digitalWrite(PWM, OF);
-
-          if(t_st > 0) t_st -= 50;
-          t_pulse += 2;
-          //if(pulse%2 == 0)  t_pulse += 1;
-          //else              t_pulse += 2;
-      }
-      
-      Ti = Ti - Vt; //vt
-      long t = 10 + st_data_set.g_Peep;
-      while(1){
-          delay(t);   Ti -= t; if(Ti < 0) break;
-          digitalWrite(PWM, ON); 
-          delay(t);   Ti -= t; if(Ti < 0) break;
-          digitalWrite(PWM, OF); 
-      }
-      
-      digitalWrite(L_GREEN, L_OF);
+    control.Compress(Vt, Ti);
 }
 ////////////////////////////////////////////////////
 ////////////////////////////////////////////////////
@@ -393,7 +254,9 @@ void process_cmd(unsigned char ck_sum)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
 {
-    lcd.init();                      // initialize the lcd 
+    // initialize the lcd 
+    display.init();                      
+    
     pinMode(DIR,      OUTPUT);
     pinMode(PWM,      OUTPUT);
     pinMode(EN,       OUTPUT);
@@ -407,6 +270,7 @@ void setup()
     digitalWrite(L_GREEN, L_OF);
     digitalWrite(L_RED,   L_OF);
     digitalWrite(EN,      EN_OF);
+    
     st_data_set.g_Peep = 5; 
     st_data_set.g_Pip  = 20; 
     st_data_set.g_Sup  = 5;
@@ -416,15 +280,8 @@ void setup()
     Serial.println("Go Home");
     go_home(); digitalWrite(EN, EN_OF);
     
-    // Print a message to the LCD.
-    lcd.backlight();
-
-    //init BMP180
-    if (!bmp.begin()) {
-        Serial.println("Could not find a valid BMP085 sensor, check wiring!");
-        while (1) {}
-    }
-    memset(g_arr, 0, NUM);
+    
+    pressureSensor.init();
     g_threshold_P_H2O = read_update_P_sensor(NUM);
     Serial.print("Threshold Pressure H2O = "); Serial.print(g_threshold_P_H2O); Serial.println(" cm H2O");
 
@@ -485,7 +342,8 @@ void loop()
     
     g_active_trigger_bk = 6000/st_data_set.g_F;
 
-    display_lcd(st_data_set.g_Vt, st_data_set.g_Ti, st_data_set.g_F, st_data_set.g_Peep, st_data_set.g_Pip, st_data_set.g_Sup);
+    // need refactor later
+    display.displayLCD(st_data_set.g_Vt, st_data_set.g_Ti, st_data_set.g_F, st_data_set.g_Peep, st_data_set.g_Pip, st_data_set.g_Sup);
         
     //////////Control Step motor
     if(g_start == ON) {
