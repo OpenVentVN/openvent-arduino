@@ -8,8 +8,12 @@ OVPressure::OVPressure()
 
 bool OVPressure::init()
 {
+#ifdef ARDUINO
     //init BMP180
     return bmp.begin();
+#else
+    return true;
+#endif
 }
 
 /**
@@ -20,6 +24,7 @@ bool OVPressure::init()
  */
 uint16_t OVPressure::getPressure(int samples)
 {
+#ifdef ARDUINO
     long P, P_H2O;
     while(samples--)
     {
@@ -35,5 +40,7 @@ uint16_t OVPressure::getPressure(int samples)
       P_H2O = P/98;       //98 H2O
     }
     return P_H2O;
-
+#else
+    return 0;
+#endif
 }

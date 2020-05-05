@@ -1,19 +1,24 @@
 #include "ovdisplay.h"
 #include "ovconfig.h"
 
+#if defined(ARDUINO)
 OVDisplay::OVDisplay(LiquidCrystal_I2C& _lcd)
     : lcd(_lcd)
 {
 
 }
+#else
+#endif
 
 void OVDisplay::init()
 {
+#if defined(ARDUINO)
     // init lcd
     lcd.init();
 
     // Print a message to the LCD.
     lcd.backlight();
+#endif
 }
 
 void OVDisplay::display()
@@ -24,7 +29,8 @@ void OVDisplay::display()
 
 void OVDisplay::displayLCD(unsigned short a, unsigned short b, unsigned short c, unsigned short d, unsigned short e, unsigned short f)
 {
-  unsigned short ng, tr, ch, dv, temp;
+#if defined(ARDUINO)
+    unsigned short ng, tr, ch, dv, temp;
 
     lcd.setCursor(0,0);   lcd.print("Vt   Ti    RR    Mode");
     lcd.setCursor(0,2);   lcd.print("Peep Pip   Sup");
@@ -62,5 +68,5 @@ void OVDisplay::displayLCD(unsigned short a, unsigned short b, unsigned short c,
     ch = f%100; ch = ch/10;
     dv = f%10;
     lcd.setCursor(11,3);  lcd.write(tr+0x30); lcd.write(ch+0x30); lcd.write(dv+0x30); lcd.print("%");
-
+#endif
 }

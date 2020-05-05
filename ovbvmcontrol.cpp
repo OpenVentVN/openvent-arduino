@@ -9,6 +9,7 @@ OVBVMControl::OVBVMControl()
 
 void OVBVMControl::Compress(long Vt, long Ti)
 {
+#if defined(ARDUINO)
     if(Vt == 0) return;
         long pulse  = calculatePulse(Vt);
         long t_pulse = 380; //380 min
@@ -41,11 +42,12 @@ void OVBVMControl::Compress(long Vt, long Ti)
         }
 
         digitalWrite(L_GREEN, L_OF);
-
+#endif
 }
 
 void OVBVMControl::Home()
 {
+#if defined(ARDUINO)
     unsigned char sum_sensor, i_h = 10;
 
       //check Switch
@@ -76,5 +78,5 @@ void OVBVMControl::Home()
 
           if(t_st > 0) t_st -= 10;
       }
-
+#endif
 }

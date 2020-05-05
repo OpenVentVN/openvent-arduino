@@ -1,7 +1,13 @@
 #ifndef OVBVMCONTROL_H
 #define OVBVMCONTROL_H
 
+#include <math.h>
+
+#if defined(ARDUINO) && ARDUINO >= 100
 #include <Arduino.h>
+#else
+#define delayMicroseconds
+#endif
 
 class OVBVMControl
 {
@@ -19,7 +25,8 @@ public:
 inline void OVBVMControl::delay_us(long us)
 {
     us = (us*4)/5;
-    while(us--) {
+    while(us--)
+    {
       delayMicroseconds(2);
     }
 }
