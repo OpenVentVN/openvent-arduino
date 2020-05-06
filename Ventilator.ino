@@ -13,6 +13,28 @@
 #include "ovwaveform.h"
 #include "ovbvmcontrol.h"
 
+// mqttsn
+#include "mqttsn-messages.h"
+
+MQTTSN mqttsn;
+// gwinfo message callback
+void MQTTSN_gwinfo_handler(const msg_gwinfo* msg)
+{
+  // Got a gateway response
+  // The frame is still in the buffer - parse it
+  
+}
+
+
+void MQTTSN_publish_handler(const msg_publish* msg)
+{
+}
+
+
+// Callback funciton to send serial data
+void MQTTSN_serial_send(uint8_t* message_buffer, int length)
+{
+}
 
 // init display
 LiquidCrystal_I2C lcd(0x27,20,4);
