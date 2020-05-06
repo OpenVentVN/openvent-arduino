@@ -26,6 +26,11 @@
 #define   S_WRITE       104
 #define   G_WRITE       104
 
+#define   S_BUZZER      105
+#define   G_BUZZER      105
+
+#define   S_ASK         106
+#define   G_ASK         106
 
 #define   TRUE          1
 #define   FAIL          0

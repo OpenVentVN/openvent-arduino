@@ -29,6 +29,7 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 unsigned char       g_but_green_1 = OF, g_but_green_2 = OF;
 unsigned char       g_but_red_1 = OF,   g_but_red_2 = OF;
 unsigned char       g_Led = OF, g_Time_led = 0;
+long                g_Time_buzzer = 0;
 unsigned char       g_start = OF;
 
 #define   MODE      4
@@ -36,7 +37,7 @@ unsigned char       g_start = OF;
 #define   SIMV      1
 #define   PRVC      2
 #define   SET       3
-#define   TRIGGER   3
+#define   TRIGGER   2
 long                g_active_trigger = 0, g_active_trigger_bk;
 struct my_data_set
 {
@@ -96,11 +97,11 @@ void display_lcd(unsigned short a, unsigned short b, unsigned short c, unsigned 
 {
   unsigned short ng, tr, ch, dv, temp;
     
-    lcd.setCursor(0,0);   lcd.print("Vt   Ti    F    Mode");
+    lcd.setCursor(0,0);   lcd.print("Vt   Ti    RR   Mode");
     lcd.setCursor(0,2);   lcd.print("Peep Pip   Sup");
     
-    if      (st_data_set.g_Mode == A_VC) {lcd.setCursor(16,1); lcd.print("AC/ "); lcd.setCursor(16,2); lcd.print("  VC");}
-    else if (st_data_set.g_Mode == SIMV) {lcd.setCursor(16,1); lcd.print("SIMV"); lcd.setCursor(16,2); lcd.print(" +PS");}
+    if      (st_data_set.g_Mode == A_VC) {lcd.setCursor(16,1); lcd.print("A/C "); lcd.setCursor(16,2); lcd.print(" _VC");}
+    else if (st_data_set.g_Mode == SIMV) {lcd.setCursor(16,1); lcd.print("SIMV"); lcd.setCursor(16,2); lcd.print(" +VS");}
     else if (st_data_set.g_Mode == PRVC) {lcd.setCursor(16,1); lcd.print("PRVC"); lcd.setCursor(16,2); lcd.print("    ");}
     else if (st_data_set.g_Mode == SET)  {lcd.setCursor(16,1); lcd.print("SET "); lcd.setCursor(16,2); lcd.print("    ");}
 
@@ -127,7 +128,6 @@ void display_lcd(unsigned short a, unsigned short b, unsigned short c, unsigned 
     ch = e/10;       
     dv = e%10;
     lcd.setCursor(5,3);   lcd.write(ch+0x30); lcd.write(dv+0x30);
-    f *= 10;
     tr = f/100;                       
     ch = f%100; ch = ch/10;       
     dv = f%10;
@@ -218,7 +218,7 @@ void run_A_VC(long Vt, long Ti)
 {
     long Pressure_H2O = read_update_P_sensor(1) - g_threshold_P_H2O;    
     if( (Pressure_H2O > (st_data_set.g_Peep-TRIGGER)) && (g_active_trigger > 0) ) return;
-    if(g_active_trigger == 0) {g_active_trigger = g_active_trigger_bk;}
+    g_active_trigger = g_active_trigger_bk;
         
       //ON
         go_compress(Vt, Ti);
@@ -234,7 +234,7 @@ void run_SIMV(long Vt, long Ti)
     if( (Pressure_H2O > (st_data_set.g_Peep-TRIGGER)) && (g_active_trigger > 0) ) return;
     if(g_active_trigger == 0) {g_active_trigger = g_active_trigger_bk;}
     if(Pressure_H2O <= (st_data_set.g_Peep-TRIGGER)) {
-        Vt = (Vt*st_data_set.g_Sup)/10; Ti = (Ti*st_data_set.g_Sup)/10; 
+        Vt = (Vt*st_data_set.g_Sup)/100; Ti = (Ti*st_data_set.g_Sup)/100; 
         if(Ti < 500) {Ti = 500;}
     }
         
@@ -265,10 +265,10 @@ void setting(void)
     if(temp > 40)     temp  = 40;
     st_data_set.g_Pip = temp;
 
-    temp = analogRead(2);   //0 -> 10
+    temp = analogRead(2);   //0 -> 100
     temp = temp/100; 
     if(temp > 10)     temp   = 10;
-    st_data_set.g_Sup = temp;
+    st_data_set.g_Sup = temp*10;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // Timer int ////////////////////////////////////////////////////////////////////////////
@@ -306,6 +306,8 @@ ISR (TIMER1_OVF_vect)
 
     if(g_active_trigger > 0) g_active_trigger--;
     if(HMI_Protocol.timeout_uart_rx > 0) HMI_Protocol.timeout_uart_rx--;
+    if(g_Time_buzzer > 0) { digitalWrite(BUZ, B_ON); g_Time_buzzer--; }
+    else {                  digitalWrite(BUZ, B_OF);}
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -341,7 +343,7 @@ void uart_sent_data(unsigned char *str, unsigned char len)
 /////////////////////////////////////////////////////
 void process_cmd(unsigned char ck_sum)
 {
-    //if(ck_sum != PAS) return;
+    if(ck_sum != PAS) return;
 
     g_HMI_config = ON; 
     if(HMI_Protocol.st_uart.function == S_START) {
@@ -380,12 +382,21 @@ void process_cmd(unsigned char ck_sum)
 
         while(1) {
             st_data_set.g_Te = (60000000/st_data_set.g_F) - (st_data_set.g_Ti*1000);
-            st_data_set.g_Te = st_data_set.g_Te - 800*calculate_pulse(st_data_set.g_Vt);  //us
+            st_data_set.g_Te = st_data_set.g_Te - 1000*calculate_pulse(st_data_set.g_Vt);  //800us
             if(st_data_set.g_Te >= 0) {break;}
             else {st_data_set.g_F--;}
         }
         HMI_Protocol.st_uart.uart_data[5] = st_data_set.g_F;
         uart_sent_data(HMI_Protocol.st_uart.uart_data, 9);
+    }
+    else if(HMI_Protocol.st_uart.function == S_ASK) {
+        HMI_Protocol.st_uart.uart_data[0] = 1;
+        uart_sent_data(HMI_Protocol.st_uart.uart_data, 1);
+    }
+    else if(HMI_Protocol.st_uart.function == S_BUZZER) {
+        g_Time_buzzer = HMI_Protocol.st_uart.uart_data[0]*100;
+        HMI_Protocol.st_uart.uart_data[0] = HMI_Protocol.st_uart.uart_data[0];
+        uart_sent_data(HMI_Protocol.st_uart.uart_data, 1);
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -409,7 +420,7 @@ void setup()
     digitalWrite(EN,      EN_OF);
     st_data_set.g_Peep = 5; 
     st_data_set.g_Pip  = 20; 
-    st_data_set.g_Sup  = 5;
+    st_data_set.g_Sup  = 50;
     st_data_set.g_Mode = 0;
 
     Serial.begin(115200);
