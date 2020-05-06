@@ -4,8 +4,6 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 SOURCES += \
-        Adafruit_BMP085.cpp \
-        LiquidCrystal_I2C.cpp \
         Protocol.cpp \
         main.cpp \
         ovalarm.cpp \
@@ -15,12 +13,13 @@ SOURCES += \
         ovflowmeter.cpp \
         ovlogger.cpp \
         ovpressure.cpp \
-        ovwaveform.cpp
+        ovstring.cpp \
+        ovwaveform.cpp \
+        tiny_ekf.c
 
 HEADERS += \
-    Adafruit_BMP085.h \
-    LiquidCrystal_I2C.h \
     Protocol.h \
+    TinyEKF.h \
     ovalarm.h \
     ovbreather.h \
     ovbvmcontrol.h \
@@ -29,4 +28,7 @@ HEADERS += \
     ovflowmeter.h \
     ovlogger.h \
     ovpressure.h \
-    ovwaveform.h
+    ovstring.h \
+    ovwaveform.h \
+    tiny_ekf.h \
+    tiny_ekf_struct.h

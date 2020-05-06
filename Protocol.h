@@ -2,7 +2,11 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+#ifdef ARDUINO
 #include "Arduino.h"
+#else
+#define byte char
+#endif
 
 #define   ADRESS        1
 

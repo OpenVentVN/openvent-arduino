@@ -6,6 +6,10 @@ OVPressure::OVPressure()
     memset(g_arr, 0, NUM);
 }
 
+/**
+ * @brief OVPressure::init
+ * @return
+ */
 bool OVPressure::init()
 {
 #ifdef ARDUINO
@@ -43,4 +47,16 @@ uint16_t OVPressure::getPressure(int samples)
 #else
     return 0;
 #endif
+}
+
+/**
+ * @brief OVPressure::model
+ * @param fx
+ * @param F
+ * @param hx
+ * @param H
+ */
+void OVPressure::model(double fx[Nsta], double F[Nsta][Nsta], double hx[Mobs], double H[Mobs][Nsta])
+{
+
 }
